@@ -149,6 +149,13 @@ venv.bak/
 # tools
 tools/
 
+# benchmark
+microbenchmarks/**/*.wasm
+microbenchmarks/**/*.json
+microbenchmarks/**/*.wasm.map
+
+# data
+data/
 # mypy
 .mypy_cache/
 .dmypy.json

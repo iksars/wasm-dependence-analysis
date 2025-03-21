@@ -1,5 +1,18 @@
 #!/bin/bash
 
+DIR="./tools"
+
+if [ ! -d "$DIR" ]; then
+    mkdir -p "$DIR"
+fi
+
+DIR="./data"
+
+if [ ! -d "$DIR" ]; then
+    mkdir -p "$DIR"
+fi
+
+
 cd tools
 # Clone the Wassail repo
 git clone https://github.com/acieroid/wassail.git
@@ -81,7 +94,7 @@ X="auto node = addNode(Node::makeVar(type));\n\
       return node;
       "
 sed -i "136i $X" ./src/dataflow/graph.h
-X="node->origin = curr;"
+X="if (!node->origin) {node->origin = curr;}"
 sed -i "417i $X" ./src/dataflow/graph.h
 X="return makeVar(curr->type, curr);"
 sed -i "472d" ./src/dataflow/graph.h
@@ -148,7 +161,7 @@ X='inline std::ostream& dump2dot(Graph& graph, std::ostream& o) {\n\
         o << "bad";\n\
         break;\n\
     }\n\
-    o << "\\" origin: " << *node->origin;\n\
+    o << "\\" origin=\\"" << *node->origin << "\\"";\n\
     auto it = graph.func->debugLocations.find(node->origin);\n\
     if (it != graph.func->debugLocations.end()) {\n\
       if (it->second) {\n\
@@ -178,7 +191,24 @@ X="#include <fstream>"
 sed -i "36i $X" ./src/passes/DataFlowOpts.cpp
 
 X="std::ofstream f;\n\
-    f.open(\"graph_\" + std::string(func->name.str) + \".dot\");\n\
+    f.open(runner->options.arguments[\"data-flow-ir-dump\"] + \"/graph_\" + std::string(func->name.str) + \".dot\");\n\
     dump2dot(graph, f);\n\
     f.close();"
 sed -i "64i $X" ./src/passes/DataFlowOpts.cpp
+
+X=".add(\"--data-flow-dump\",\n\
+         \"-od\",\n\
+         \"Dump data flow graph to a file\",\n\
+         WasmOptOption,\n\
+         Options::Arguments::One,\n\
+         [](Options* o, const std::string& argument) {\n\
+           o->extra[\"od\"] = argument;\n\
+           Colors::setEnabled(false);\n\
+         })"
+sed -i "108i $X" ./src/tools/wasm-opt.cpp
+X="options.passOptions.arguments[\"data-flow-ir-dump\"] = options.extra[\"od\"];"
+sed -i "272i $X" ./src/tools/wasm-opt.cpp
+
+sed -i "418d" ./src/pass.h
+X="PassRunner* runner = nullptr;"
+sed -i "421i $X" ./src/pass.h
