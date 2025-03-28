@@ -1,6 +1,6 @@
 import sys
-from process import runBenchmark, prepareBenchmark, clear
-
+from process import runBenchmark, prepareBenchmark, clear, DATA_MICRO_BENCHMARKS_PATH
+import dump
 
 def help_message(): 
     print("-" * 80)
@@ -42,11 +42,15 @@ def main():
         if args[1] == "--fresh":
             prepareBenchmark()
             runBenchmark()
+            dump.dump(DATA_MICRO_BENCHMARKS_PATH / "result.json", DATA_MICRO_BENCHMARKS_PATH / "result.tex")
+            print("\nreport generated at {}".format(DATA_MICRO_BENCHMARKS_PATH / "result.tex"))
         elif args[1] == "--eval-no-prepare":
             runBenchmark()
+            dump.dump(DATA_MICRO_BENCHMARKS_PATH / "result.json", DATA_MICRO_BENCHMARKS_PATH / "result.tex")
+            print("\nreport generated at {}".format(DATA_MICRO_BENCHMARKS_PATH / "result.tex"))
         elif args[1] == "--dump":
-            print("Not implemented yet.")
-            pass
+            dump.dump(DATA_MICRO_BENCHMARKS_PATH / "result.json", DATA_MICRO_BENCHMARKS_PATH / "result.tex")
+            print("\nreport generated at {}".format(DATA_MICRO_BENCHMARKS_PATH / "result.tex"))
         else:
             print("Invalid suboption {} for --micro.".format(args[1]))
             help_message()

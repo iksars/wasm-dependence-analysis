@@ -103,6 +103,12 @@ sed -i "585d" ./src/dataflow/graph.h
 sed -i "585i $X" ./src/dataflow/graph.h
 sed -i "625d" ./src/dataflow/graph.h
 sed -i "625i $X" ./src/dataflow/graph.h
+sed -i "648d" ./src/dataflow/graph.h
+X="ifTrue = ensureI1(condition, expr);"
+sed -i "648i $X" ./src/dataflow/graph.h
+sed -i "650d" ./src/dataflow/graph.h
+X="ifFalse = makeZeroComp(condition, true, expr);"
+sed -i "650i $X" ./src/dataflow/graph.h
 
 sed -i "72d" ./src/dataflow/utils.h
 
@@ -212,3 +218,7 @@ sed -i "272i $X" ./src/tools/wasm-opt.cpp
 sed -i "418d" ./src/pass.h
 X="PassRunner* runner = nullptr;"
 sed -i "421i $X" ./src/pass.h
+
+cd ../..
+
+./build.sh

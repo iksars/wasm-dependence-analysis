@@ -2,14 +2,17 @@ from pathlib import Path
 import subprocess
 import time
 import json
+import graph
 
 MICRO_BENCHMARKS_PATH = Path("microbenchmarks")
-TOOL_WASSAIL = "wassail"
-TOOL_BINARYEN = "~/binaryen/bin"
+TOOL_WASSAIL = "tools/wassail/_build/default/main.exe"
+TOOL_BINARYEN = "tools/binaryen/bin"
 TOOL_BINARYEN_OPT = "{}/wasm-opt".format(TOOL_BINARYEN)
 TOOL_BINARYEN_AS = "{}/wasm-as".format(TOOL_BINARYEN)
-TOOL_WASMA = "~/wasma/bin/DataFlowGraph"
+TOOL_WASMA = "tools/wasma/bin/DataFlowGraph"
 DATA_PATH = Path("data")
+DATA_MICRO_BENCHMARKS_PATH = DATA_PATH / "microbenchmarks"
+
 
 
 def executeCommand(command, tool_name):
@@ -43,7 +46,7 @@ def runWassail(inputDir):
         # Function index
         funcIndex = function["index"]
         # Output file
-        outputFile = DATA_PATH / "microbenchmarks/{}".format(inputDir.name) / "wassail/graph_{}.dot".format(funcIndex)
+        outputFile = DATA_MICRO_BENCHMARKS_PATH/"{}".format(inputDir.name) / "wassail/graph_{}.dot".format(funcIndex)
         # Create the output directory
         outputFile.parent.mkdir(parents=True, exist_ok=True)
         # Create a command to run wassail
@@ -70,7 +73,12 @@ def generateMetadata(inputFile, metadataFile):
     for function in functions:
         fTuple = function.strip().split("\t")
         # print(fTuple)
-        metadata["functions"].append({"index": fTuple[0], "name": fTuple[1]})
+        wassailCommand2 = "{} function-instruction-labels {} {}".format(TOOL_WASSAIL, inputFile, fTuple[0])
+        status, msg, _ = executeCommand(wassailCommand2, "wassail")
+        if not status:
+            return False, msg
+        instructions = msg.strip().split("\n")
+        metadata["functions"].append({"index": fTuple[0], "name": fTuple[1], "count": int(instructions[-1]) + 1})
     # Write the metadata to a file
     with open(metadataFile, "w") as f:
         json.dump(metadata, f)
@@ -147,7 +155,7 @@ def runWasma(inputDir):
         # Function index
         funcIndex = function["index"]
         # Output directory
-        outputDir = DATA_PATH / "microbenchmarks/{}".format(inputDir.name) / "wasma"
+        outputDir = DATA_MICRO_BENCHMARKS_PATH/"{}".format(inputDir.name) / "wasma"
         # Create the output directory
         outputDir.mkdir(parents=True, exist_ok=True)
         # Create a command to run wasma
@@ -160,21 +168,76 @@ def runWasma(inputDir):
 
 def runBinaryen(inputDir):
     # Output directory
-    outputDir = DATA_PATH / "microbenchmarks/{}".format(inputDir.name) / "wasm-opt"
+    outputDir = DATA_MICRO_BENCHMARKS_PATH/"{}".format(inputDir.name) / "binaryen"
     # Create the output directory
     outputDir.mkdir(parents=True, exist_ok=True)
     # Create a command to run binaryen wasm-opt
     wasmOptCommand = "{} {} --flatten --dfo -ism {} -od {}".format(TOOL_BINARYEN_OPT, inputDir / "{}.wasm".format(inputDir.name), inputDir / "{}.wasm.map".format(inputDir.name), outputDir)
-    status, msg, exec_time = executeCommand(wasmOptCommand, "wasm-opt")
+    status, msg, exec_time = executeCommand(wasmOptCommand, "binaryen")
     if not status:
         print(msg)
     else :
         print("binaryen wasm-opt analyse function in {} took {} seconds".format(inputDir.name, exec_time))
 
+def getWassailOutFileName(index, testName = ""):
+    return "graph_{}.dot".format(index)
+
+def getWasmaOutFileName(index, testName = ""):
+    return "{}_{}.dot".format(testName, index)
+
+def getBinaryenOutFileName(index, testName = ""):
+    return "graph_{}.dot".format(index)
+
+#  dic of tools
+toolRegister = {
+    "wassail": [runWassail, getWassailOutFileName, graph.build_graph_from_dot_wassail],
+    "wasma": [runWasma, getWasmaOutFileName, graph.build_graph_from_dot_wasma],
+    "binaryen": [runBinaryen, getBinaryenOutFileName, graph.build_graph_from_dot_wasmOpt]
+}
+
+
+def runAllTool(inputDir):
+    for tool in toolRegister:
+        runTool(tool, inputDir)
+
+def runTool(tool, inputDir):
+    toolRegister[tool][0](inputDir)
+
+
 def runBenchmark():
     # iterate over all the microbenchmarks dir, and run the tools on them
     for item in MICRO_BENCHMARKS_PATH.iterdir():
         if item.is_dir():
-            runWassail(item)
-            runWasma(item)
-            runBinaryen(item)
+            runAllTool(item)
+    data = {"tools": [], "cases": []}
+    data["tools"] = list(toolRegister.keys())
+    # transform the data
+    for item in DATA_MICRO_BENCHMARKS_PATH.iterdir():
+        if item.is_dir():
+            caseName = item.name
+            metadata = readMetadata(MICRO_BENCHMARKS_PATH / caseName / "metadata.json")
+            data_item = {
+                "case": caseName,
+                "functions": [],
+                "average": []
+            }
+            avg = {}
+            for i in range(len(metadata["functions"])):
+                graphs = []
+                for tool in toolRegister:
+                    graphs.append(toolRegister[tool][2](item / tool / toolRegister[tool][1](i, caseName), metadata["functions"][i]["count"]))
+                matrix = graph.compareAdjacentMatrix(graphs)
+                data_item["functions"].append({"index": i, "matrix": matrix.tolist()})
+                if i == 0:
+                    avg = matrix
+                else:
+                    avg += matrix
+            data_item["average"] = (avg / len(metadata["functions"])).tolist()
+            data["cases"].append(data_item)
+        else :
+            # unexcepted file
+            item.unlink()
+    # Write the data to a file
+    with open(DATA_MICRO_BENCHMARKS_PATH / "result.json", "w") as f:
+        json.dump(data, f)
+    
