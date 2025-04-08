@@ -46,7 +46,7 @@ def json_to_latex(json_file, output_file):
     cases = data["cases"]
     
     latex_output = [
-        "\\documentclass{article}", "\\usepackage{booktabs}", "\\begin{document}",
+        "\\documentclass{article}", "\\usepackage{booktabs}", "\\usepackage{float}", "\\begin{document}",
         "\\title{Graph Similarity Analysis}", "\\author{}", "\\date{}", "\\maketitle"
     ]
     
@@ -70,7 +70,7 @@ def json_to_latex(json_file, output_file):
 
 def matrix_to_latex(matrix, tools, caption):
     """ 将矩阵转换为 LaTeX 表格格式 """
-    table = ["\\begin{table}[h]", "    \\centering", "    \\begin{tabular}{l" + "c" * len(tools) + "}", "        \\toprule"]
+    table = ["\\begin{table}[H]", "    \\centering", "    \\begin{tabular}{l" + "c" * len(tools) + "}", "        \\toprule"]
     table.append("        & " + " & ".join(tools) + " \\\\")
     table.append("        \\midrule")
     

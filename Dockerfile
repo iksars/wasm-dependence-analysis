@@ -29,6 +29,8 @@ RUN eval $(opam env)
 
 RUN pip install numpy
 RUN pip install pydot
+RUN pip install scipy
+RUN pip install networkx
 
 # Copy the wasm-call-graphs repo 
 RUN mkdir -p /home/wasm-dependence-analysis

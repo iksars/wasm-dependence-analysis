@@ -191,7 +191,6 @@ def build_graph_from_dot_wasma(dot, count=0):
     localPattern = r"\"#\d+: \((local|param|global) (.*?)\)\""  # 匹配 local变量
     localMap = {}  # local变量映射表,key: local变量名, value: ([前驱节点列表],[后继节点列表])
     weightMap = {}  # 权重映射表,key: (from_id, to_id), value: weight
-    # TODO: 处理local.get和local.set之间的局部变量，不能舍弃该节点，应该传递依赖
     # 规则：
     # 1. 1对1，如 local.set 0 -> L0 -> local.get 0,直接传递
     # 2. 1对多，如 local.set 0 -> L0 -> local.get 01, local.get 02,直接传递
