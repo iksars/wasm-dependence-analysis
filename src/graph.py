@@ -411,7 +411,7 @@ def compareAdjacentMatrix(graphs):
 
     # 两两计算 Frobenius 范数
     for (i, g1), (j, g2) in itertools.combinations(enumerate(graphs), 2):
-        sim = np.linalg.norm(nx.adjacency_matrix(nx.transitive_closure(g1.to_NetworkX())).toarray() - nx.adjacency_matrix(nx.transitive_closure(g2.to_NetworkX())).toarray(), 'fro')
+        sim = np.linalg.norm(nx.adjacency_matrix(g1.to_NetworkX()).toarray() - nx.adjacency_matrix(g2.to_NetworkX()).toarray(), 'fro')
         similarity_matrix[i, j] = similarity_matrix[j, i] = sim  # 矩阵对称
 
     return similarity_matrix
