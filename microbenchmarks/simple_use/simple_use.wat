@@ -8,11 +8,15 @@
     i32.const 5
     i32.add
     local.set 1
+    i32.const 0
+    local.set 0
     local.get 1
     i32.const 10
     i32.lt_s
     if  ;; label = @1
       local.get 0
+      i32.const 7
+      i32.add
       local.set 2
     else
       local.get 1

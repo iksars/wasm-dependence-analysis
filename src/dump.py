@@ -1,4 +1,5 @@
 import json
+import os
 
 def recrusivePrint(path, indent=0):
     for item in path.iterdir():
@@ -12,6 +13,10 @@ def recrusivePrint(path, indent=0):
 
 def dump(path, output):
     json_to_latex(path, output)
+    # 执行shell脚本
+    os.system("bash ./latexify.sh")
+    print("\nreport generated at {}".format(output))
+    
 
 
 # def latexify(path): 

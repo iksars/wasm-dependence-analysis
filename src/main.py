@@ -43,14 +43,11 @@ def main():
             prepareBenchmark()
             runBenchmark()
             dump.dump(DATA_MICRO_BENCHMARKS_PATH / "result.json", DATA_MICRO_BENCHMARKS_PATH / "result.tex")
-            print("\nreport generated at {}".format(DATA_MICRO_BENCHMARKS_PATH / "result.tex"))
         elif args[1] == "--eval-no-prepare":
             runBenchmark()
             dump.dump(DATA_MICRO_BENCHMARKS_PATH / "result.json", DATA_MICRO_BENCHMARKS_PATH / "result.tex")
-            print("\nreport generated at {}".format(DATA_MICRO_BENCHMARKS_PATH / "result.tex"))
         elif args[1] == "--dump":
             dump.dump(DATA_MICRO_BENCHMARKS_PATH / "result.json", DATA_MICRO_BENCHMARKS_PATH / "result.tex")
-            print("\nreport generated at {}".format(DATA_MICRO_BENCHMARKS_PATH / "result.tex"))
         else:
             print("Invalid suboption {} for --micro.".format(args[1]))
             help_message()

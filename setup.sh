@@ -68,10 +68,10 @@ X="Node* doVisitConst(Const* curr) { return makeConst(curr); }"
 sed -i "419i $X" ./src/dataflow/graph.h
 
 X="Node* makeConst(wasm::Const* origin) {\n\
-    auto iter = constantNodes.find(origin->value);\n\
-    if (iter != constantNodes.end()) {\n\
-      return iter->second;\n\
-    }\n\
+    // auto iter = constantNodes.find(origin->value);\n\
+    // if (iter != constantNodes.end()) {\n\
+    //   return iter->second;\n\
+    // }\n\
     // Create one for this literal.\n\
     Builder builder(*module);\n\
     auto* c = builder.makeConst(origin->value);\n\
@@ -80,7 +80,7 @@ X="Node* makeConst(wasm::Const* origin) {\n\
       func->debugLocations[c] = debugLoc;\n\
     }\n\
     auto* ret = addNode(Node::makeExpr(c, c));\n\
-    constantNodes[origin->value] = ret;\n\
+    // constantNodes[origin->value] = ret;\n\
     return ret;\n\
 }"
 sed -i "157i $X" ./src/dataflow/graph.h
@@ -94,7 +94,9 @@ X="auto node = addNode(Node::makeVar(type));\n\
       return node;
       "
 sed -i "136i $X" ./src/dataflow/graph.h
-X="if (!node->origin) {node->origin = curr;}"
+sed -i "417d" ./src/dataflow/graph.h
+X="if (func->isParam(curr->index) && node->isVar()) { node = makeVar(curr->type, curr);} // If this is a param and never changed since build as var, we need to emit local.get in place, this node has the debug location for the local.get \n\
+return node;"
 sed -i "417i $X" ./src/dataflow/graph.h
 X="return makeVar(curr->type, curr);"
 sed -i "472d" ./src/dataflow/graph.h
@@ -222,3 +224,5 @@ sed -i "421i $X" ./src/pass.h
 cd ../..
 
 ./build.sh
+
+

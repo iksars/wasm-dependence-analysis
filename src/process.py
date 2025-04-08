@@ -226,6 +226,8 @@ def runBenchmark():
                 graphs = []
                 for tool in toolRegister:
                     graphs.append(toolRegister[tool][2](item / tool / toolRegister[tool][1](i, caseName), metadata["functions"][i]["count"]))
+                # for graph2 in graphs:
+                #     print(graph2.to_dot())
                 matrix = graph.compareAdjacentMatrix(graphs)
                 data_item["functions"].append({"index": i, "matrix": matrix.tolist()})
                 if i == 0:
