@@ -12,6 +12,10 @@ TOOL_BINARYEN_AS = "{}/wasm-as".format(TOOL_BINARYEN)
 TOOL_WASMA = "tools/wasma/bin/DataFlowGraph"
 DATA_PATH = Path("data")
 DATA_MICRO_BENCHMARKS_PATH = DATA_PATH / "microbenchmarks"
+REAL_WORLD_PATH = Path("real-world-programs")
+DATA_REAL_WORLD_PATH = DATA_PATH / "real-world-programs"
+
+name_map = {"blake3": "blake3_js_bg", "fonteditor-core": "woff2", "magic": "magic-js", "opusscript": "opusscript_native_wasm", "shiki": "onig", "source-map": "mappings", "wasm-rsa": "rsa_lib_bg"}
 
 
 
@@ -37,20 +41,25 @@ def executeCommand(command, tool_name):
     return True, msg, exec_time
 
 
-def runWassail(inputDir):
+def runWassail(inputDir, micro = True):
     # find the metadata file
     metadataFile = inputDir / "metadata.json"
     metadata = readMetadata(metadataFile)
     # Iterate over all the functions
     for function in metadata["functions"]:
+        # Input file
+        inputFile = inputDir / "{}.wasm".format(inputDir.name)
         # Function index
         funcIndex = function["index"]
         # Output file
         outputFile = DATA_MICRO_BENCHMARKS_PATH/"{}".format(inputDir.name) / "wassail/graph_{}.dot".format(funcIndex)
+        if not micro:
+            outputFile = DATA_REAL_WORLD_PATH/"{}".format(inputDir.name) / "wassail/graph_{}.dot".format(funcIndex)
+            inputFile = inputDir / "{}.wasm".format(name_map[inputDir.name])
         # Create the output directory
         outputFile.parent.mkdir(parents=True, exist_ok=True)
         # Create a command to run wassail
-        wassailCommand = "{} dependencies {} {} {}".format(TOOL_WASSAIL, inputDir / "{}.wasm".format(inputDir.name), funcIndex, outputFile)
+        wassailCommand = "{} dependencies {} {} {}".format(TOOL_WASSAIL, inputFile, funcIndex, outputFile)
         status, msg, exec_time = executeCommand(wassailCommand, "wassail")
         if not status:
             print(msg)
@@ -92,8 +101,6 @@ def readMetadata(metadataFile):
 
 
 def wat2wasm(inputFile):
-    # wat2wasm path
-    wat2wasmPath = "wat2wasm"
     # Output file
     outputFile = inputFile.with_suffix(".wasm")
     sourceMapFile = inputFile.with_suffix(".wasm.map")
@@ -122,6 +129,20 @@ def prepareBenchmark():
 
 def clear():
     clearBenchmark()
+    clearReal()
+
+def clearReal():
+    for item in REAL_WORLD_PATH.iterdir():
+        if item.is_dir():
+            mapFile = item / "{}.wasm.map".format(name_map[item.name])
+            metaDataFile = item / "metadata.json"
+            for file in item.iterdir():
+                if file == mapFile or file == metaDataFile:
+                    file.unlink()
+        else :
+            item.unlink()
+    realDataPath = DATA_PATH / "real-world-programs"
+    rmdirHelper(realDataPath)
 
 def clearBenchmark():
     for item in MICRO_BENCHMARKS_PATH.iterdir():
@@ -146,33 +167,46 @@ def rmdirHelper(path):
     path.rmdir()
     
 # ~/wasma/bin/DataFlowGraph -file test2.wasm -fi 0 -cdfg true -out .
-def runWasma(inputDir):
+def runWasma(inputDir, micro = True):
     # find the metadata file
     metadataFile = inputDir / "metadata.json"
     metadata = readMetadata(metadataFile)
     # Iterate over all the functions
     for function in metadata["functions"]:
+        # Input file
+        inputFile = inputDir / "{}.wasm".format(inputDir.name)
         # Function index
         funcIndex = function["index"]
         # Output directory
         outputDir = DATA_MICRO_BENCHMARKS_PATH/"{}".format(inputDir.name) / "wasma"
+        if not micro:
+            outputDir = DATA_REAL_WORLD_PATH/"{}".format(inputDir.name) / "wasma"
+            inputFile = inputDir / "{}.wasm".format(name_map[inputDir.name])
         # Create the output directory
         outputDir.mkdir(parents=True, exist_ok=True)
         # Create a command to run wasma
-        wasmaCommand = "{} -file {} -fi {} -cdfg true -out {}".format(TOOL_WASMA, inputDir / "{}.wasm".format(inputDir.name), funcIndex, outputDir)
+        wasmaCommand = "{} -file {} -fi {} -cdfg true -out {}".format(TOOL_WASMA, inputFile, funcIndex, outputDir)
         status, msg, exec_time = executeCommand(wasmaCommand, "wasma")
         if not status:
             print(msg)
         else :
             print("wasma analyse function {} in {} took {} seconds".format(funcIndex, inputDir.name, exec_time))
 
-def runBinaryen(inputDir):
+def runBinaryen(inputDir, micro = True):
+    # input file
+    inputFile = inputDir / "{}.wasm".format(inputDir.name)
     # Output directory
     outputDir = DATA_MICRO_BENCHMARKS_PATH/"{}".format(inputDir.name) / "binaryen"
+    # map file
+    mapFile = inputDir / "{}.wasm.map".format(inputDir.name)
+    if not micro:
+        outputDir = DATA_REAL_WORLD_PATH/"{}".format(inputDir.name) / "binaryen"
+        inputFile = inputDir / "{}.wasm".format(name_map[inputDir.name])
+        mapFile = inputDir / "{}.wasm.map".format(name_map[inputDir.name])
     # Create the output directory
     outputDir.mkdir(parents=True, exist_ok=True)
     # Create a command to run binaryen wasm-opt
-    wasmOptCommand = "{} {} --flatten --dfo -ism {} -od {}".format(TOOL_BINARYEN_OPT, inputDir / "{}.wasm".format(inputDir.name), inputDir / "{}.wasm.map".format(inputDir.name), outputDir)
+    wasmOptCommand = "{} {} --flatten --dfo -ism {} -od {}".format(TOOL_BINARYEN_OPT, inputFile, mapFile, outputDir)
     status, msg, exec_time = executeCommand(wasmOptCommand, "binaryen")
     if not status:
         print(msg)
@@ -196,12 +230,12 @@ toolRegister = {
 }
 
 
-def runAllTool(inputDir):
+def runAllTool(inputDir, micro = True):
     for tool in toolRegister:
-        runTool(tool, inputDir)
+        runTool(tool, inputDir, micro)
 
-def runTool(tool, inputDir):
-    toolRegister[tool][0](inputDir)
+def runTool(tool, inputDir, micro = True):
+    toolRegister[tool][0](inputDir, micro)
 
 
 def runBenchmark():
@@ -225,12 +259,12 @@ def runBenchmark():
             for i in range(len(metadata["functions"])):
                 graphs = []
                 for tool in toolRegister:
-                    graphs.append(toolRegister[tool][2](item / tool / toolRegister[tool][1](i, caseName), metadata["functions"][i]["count"]))
-                # if caseName == "control_flow":
+                    graphs.append(toolRegister[tool][2](item / tool / toolRegister[tool][1](i if tool == "binaryen" else metadata["functions"][i]["index"], caseName), metadata["functions"][i]["count"]))
+                # if caseName == "simple_use2":
                 #     for graph2 in graphs:
                 #         print(graph2.to_dot())
                 matrix = graph.compareAdjacentMatrix(graphs)
-                data_item["functions"].append({"index": i, "matrix": matrix.tolist()})
+                data_item["functions"].append({"index": metadata["functions"][i]["index"], "matrix": matrix.tolist()})
                 if i == 0:
                     avg = matrix
                 else:
@@ -243,4 +277,61 @@ def runBenchmark():
     # Write the data to a file
     with open(DATA_MICRO_BENCHMARKS_PATH / "result.json", "w") as f:
         json.dump(data, f)
+
+
+
+
+def prepareReal():
+    for item in REAL_WORLD_PATH.iterdir():
+        if item.is_dir():
+            # Generate metadata for the tools
+            inputFile = item / "{}.wat".format(name_map[item.name])
+            metadataFile = item / "metadata.json"
+            status, msg = generateMetadata(inputFile, metadataFile)
+            if not status:
+                print(msg)
+                return False
+            status, msg = wat2wasm(inputFile)
+            if not status:
+                print(msg)
+                return False
+    return True
     
+def runReal():
+    # for item in REAL_WORLD_PATH.iterdir():
+    #     if item.is_dir():
+    #         runAllTool(item, False)
+    data = {"tools": [], "cases": []}
+    data["tools"] = list(toolRegister.keys())
+    # transform the data
+    for item in DATA_REAL_WORLD_PATH.iterdir():
+        if item.is_dir():
+            caseName = item.name
+            metadata = readMetadata(REAL_WORLD_PATH / caseName / "metadata.json")
+            data_item = {
+                "case": caseName,
+                "functions": [],
+                "average": []
+            }
+            avg = {}
+            for i in range(len(metadata["functions"])):
+                graphs = []
+                for tool in toolRegister:
+                    graphs.append(toolRegister[tool][2](item / tool / toolRegister[tool][1](i if tool == "binaryen" else metadata["functions"][i]["index"], name_map[caseName]), metadata["functions"][i]["count"]))
+                # if caseName == "simple_use2":
+                #     for graph2 in graphs:
+                #         print(graph2.to_dot())
+                matrix = graph.compareAdjacentMatrix(graphs)
+                data_item["functions"].append({"index": metadata["functions"][i]["index"], "matrix": matrix.tolist()})
+                if i == 0:
+                    avg = matrix
+                else:
+                    avg += matrix
+            data_item["average"] = (avg / len(metadata["functions"])).tolist()
+            data["cases"].append(data_item)
+        else :
+            # unexcepted file
+            item.unlink()
+    # Write the data to a file
+    with open(DATA_REAL_WORLD_PATH / "result.json", "w") as f:
+        json.dump(data, f)

@@ -12,9 +12,9 @@ def recrusivePrint(path, indent=0):
             recrusivePrint(item, indent + 1)
 
 def dump(path, output):
-    json_to_latex(path, output)
+    json_to_latex(path, output/"result.tex")
     # 执行shell脚本
-    os.system("bash ./latexify.sh")
+    os.system("bash ./latexify.sh {}".format(output))
     print("\nreport generated at {}".format(output))
     
 

@@ -63,6 +63,8 @@ class Graph:
         # 添加边
         for from_id, (_, to_ids) in self.adj_list.items():
             for to_id in to_ids:
+                if (to_id >= self.node_count) or (from_id >= self.node_count):
+                    continue
                 G.add_edge(from_id, to_id)
         return G
     
@@ -138,46 +140,76 @@ def merge_local_get_set(graph: Graph) -> Graph:
                 res.add_edge(node_id, to_id)
     return res
 
-def merge_local_get_set_helper(graph: Graph, node_id: int, local_map: dict) -> int:
-    # 如果节点不是 local.get 或 local.set, 直接返回
-    if "local.get" not in graph.adj_list[node_id][0] and "local.set" not in graph.adj_list[node_id][0]:
-        return node_id
-    # 如果节点是 local.get 或 local.set, 先判断是否已经合并过
-    if node_id in local_map:
-        return local_map[node_id]
-    else:
-        # 如果没有后继节点, 直接返回
-        if not graph.adj_list[node_id][1]:
-            local_map[node_id] = node_id
-            return node_id
-        # 如果有后继节点, 合并后继节点
-        res = merge_local_get_set_helper(graph, graph.adj_list[node_id][1][0], local_map)
-        local_map[node_id] = res
-        return res
-    
+# def merge_local_get_set_helper(graph: Graph, node_id: int, local_map: dict) -> int:
+#     # 如果节点不是 local.get 或 local.set, 直接返回
+#     if "local.get" not in graph.adj_list[node_id][0] and "local.set" not in graph.adj_list[node_id][0]:
+#         return node_id
+#     # 如果节点是 local.get 或 local.set, 先判断是否已经合并过
+#     if node_id in local_map:
+#         return local_map[node_id]
+#     else:
+#         # 如果没有后继节点, 直接返回
+#         if not graph.adj_list[node_id][1]:
+#             local_map[node_id] = node_id
+#             return node_id
+#         # 如果有后继节点, 合并后继节点
+#         res = merge_local_get_set_helper(graph, graph.adj_list[node_id][1][0], local_map)
+#         local_map[node_id] = res
+#         return res
 
+def merge_local_get_set_helper(graph: Graph, node_id: int, local_map: dict):
+    path = []
+    current = node_id
+
+    # 迭代找最终合并目标
+    while True:
+        # 检查path中是否有当前节点，如果有，说明有环，直接返回
+        if current in path:
+            for node in path:
+                local_map[node] = node
+        label, successors = graph.adj_list[current]
+        if "local.get" not in label and "local.set" not in label:
+            break
+        if current in local_map:
+            current = local_map[current]
+            break
+        path.append(current)
+        if not successors:
+            break
+        current = successors[0]
+
+    # 路径压缩
+    for node in path:
+        local_map[node] = current
+
+    
     
 def build_graph_from_dot_wassail(dot, count=0):
     """
     从 wassail 的输出中构建数据依赖图
     """
     ret = Graph(count, dot)
-    graph = pydot.graph_from_dot_file(dot)[0]  # 解析 DOT 图
-    for node in graph.get_nodes():
-        insList = extract_all_instr_from_label(node.get_label())  # 提取节点指令
-        for instr in insList:
-            instrTuple = instr.split(":")
-            if len(instrTuple) != 2:
-                raise ValueError(f"Invalid instruction format: {instr}")
-            if instrTuple[1].strip() == "return": # 跳过 return 指令
-                continue
-            ret.add_node(int(instrTuple[0].strip()), instrTuple[1].strip())  # 添加节点
-    for edge in graph.get_edges():
-        pattern = r"block\d+:instr(\d+) -> block\d+:instr(\d+)"  # 匹配边
-        match = re.match(pattern, edge.get_source() + " -> " + edge.get_destination())
-        if match:
-            from_id, to_id = match.groups()
-            ret.add_edge(int(from_id), int(to_id))  # 添加边
+    try:
+        graph = pydot.graph_from_dot_file(dot)[0]  # 解析 DOT 图
+        for node in graph.get_nodes():
+            insList = extract_all_instr_from_label(node.get_label())  # 提取节点指令
+            for instr in insList:
+                instrTuple = instr.split(":")
+                if len(instrTuple) != 2:
+                    raise ValueError(f"Invalid instruction format: {instr}")
+                if instrTuple[1].strip() == "return": # 跳过 return 指令
+                    continue
+                ret.add_node(int(instrTuple[0].strip()), instrTuple[1].strip())  # 添加节点
+        for edge in graph.get_edges():
+            pattern = r"block\d+:instr(\d+) -> block\d+:instr(\d+)"  # 匹配边
+            match = re.match(pattern, edge.get_source() + " -> " + edge.get_destination())
+            if match:
+                from_id, to_id = match.groups()
+                ret.add_edge(int(from_id), int(to_id))  # 添加边
+    except Exception as e:
+        print(f"Error parsing DOT file: {e}")
+        return Graph(count, dot)  # 返回空图
+    
     return merge_local_get_set(ret) 
 
 
@@ -186,61 +218,67 @@ def build_graph_from_dot_wasma(dot, count=0):
     从 wasma 的输出中构建数据依赖图
     """
     ret = Graph(count, dot)
-    graph = pydot.graph_from_dot_file(dot)[0]  # 解析 DOT 图
-    nodePattern = r"\"#\d+\+(\d+):(.*?)\""  # 匹配节点
-    localPattern = r"\"#\d+: \((local|param|global) (.*?)\)\""  # 匹配 local变量
-    localMap = {}  # local变量映射表,key: local变量名, value: ([前驱节点列表],[后继节点列表])
-    weightMap = {}  # 权重映射表,key: (from_id, to_id), value: weight
-    # 规则：
-    # 1. 1对1，如 local.set 0 -> L0 -> local.get 0,直接传递
-    # 2. 1对多，如 local.set 0 -> L0 -> local.get 01, local.get 02,直接传递
-    # 3. 多对1，如 local.set 01, local.set 02 -> L0 -> local.get 0,需要判断local.get的值到底来自于哪个local.set，判断规则如下：
-    #   如果与L0相连的边上有权重，按照权重相等来传递，按照间接边上的权来传递，如 a ->(va) local.set 01 ->(va) L0 -> local.get 0 ->(va) b
-    #   如果无权的source只有一个，那么无权的dest与source相连，直接传递
-    #   如果无法判断，报错
-    # 4. 多对多，需对于每个local.get都要进行多对1的判断
-    for node in graph.get_nodes():
-        match = re.match(nodePattern, node.get_label())
-        if match:
-            instr_id, instr_content = match.groups()
-            ret.add_node(int(instr_id), instr_content.strip())  # 添加节点
-        match2 = re.match(localPattern, node.get_label())
-        if match2:
-            local_id = match2.group(2)
-            # print(local_id)
-            if local_id not in localMap:
-                localMap[local_id] = ([], [])
-    # print(localMap)
-    for edge in graph.get_edges():
-        pattern = r"(\d+) -> (\d+)"  # 匹配边
-        match = re.match(pattern, edge.get_source() + " -> " + edge.get_destination())
-        if match:
-            to_id, from_id = match.groups()
-            ret.add_edge(int(from_id), int(to_id))  # 添加边
-        if edge.get_source() in localMap:
-            localMap[edge.get_source()][1].append(edge.get_destination())
-        if edge.get_destination() in localMap:
-            localMap[edge.get_destination()][0].append(edge.get_source())
-        weight = edge.get_label()
-        if weight:
-            weightMap[(edge.get_source(), edge.get_destination())] = weight
-    # print(weightMap)
-    for local_id, (from_ids, to_ids) in localMap.items():
-        # print(local_id, from_ids, to_ids)
-        if len(from_ids) == 1 and len(to_ids) == 1:
-            ret.add_edge(int(to_ids[0]), int(from_ids[0]))
-        elif len(from_ids) == 1 and len(to_ids) > 1:
-            for to_id in to_ids:
-                # print("to_id", to_id, "from_ids", from_ids[0])
-                ret.add_edge(int(to_id), int(from_ids[0]))
-        elif len(from_ids) > 1 and len(to_ids) == 1:
-            build_graph_from_dot_wasma_helper(ret, to_ids[0], weightMap, localMap, local_id)
-        elif len(from_ids) > 1 and len(to_ids) > 1:
-            for to_id in to_ids:
-                build_graph_from_dot_wasma_helper(ret, to_id, weightMap, localMap, local_id)
-    return merge_local_get_set(ret)
+    try: 
+        graph = pydot.graph_from_dot_file(dot)[0]  # 解析 DOT 图
+        nodePattern = r"\"#\d+\+(\d+):(.*?)\""  # 匹配节点
+        localPattern = r"\"#\d+: \((local|param|global) (.*?)\)\""  # 匹配 local变量
+        localMap = {}  # local变量映射表,key: local变量名, value: ([前驱节点列表],[后继节点列表])
+        weightMap = {}  # 权重映射表,key: (from_id, to_id), value: weight
+        # 规则：
+        # 1. 1对1，如 local.set 0 -> L0 -> local.get 0,直接传递
+        # 2. 1对多，如 local.set 0 -> L0 -> local.get 01, local.get 02,直接传递
+        # 3. 多对1，如 local.set 01, local.set 02 -> L0 -> local.get 0,需要判断local.get的值到底来自于哪个local.set，判断规则如下：
+        #   如果与L0相连的边上有权重，按照权重相等来传递，若无，按照间接边上的权来传递，如 a ->(va) local.set 01 ->(va) L0 -> local.get 0 ->(va) b
+        #   如果无法判断，报错
+        # 4. 多对多，需对于每个local.get都要进行多对1的判断
+        for node in graph.get_nodes():
+            match = re.match(nodePattern, node.get_label())
+            if match:
+                instr_id, instr_content = match.groups()
+                ret.add_node(int(instr_id), instr_content.strip())  # 添加节点
+            match2 = re.match(localPattern, node.get_label())
+            if match2:
+                local_id = match2.group(2)
+                # print(local_id)
+                if local_id not in localMap:
+                    localMap[local_id] = ([], [])
+        # print(localMap)
+        for edge in graph.get_edges():
+            pattern = r"(\d+) -> (\d+)"  # 匹配边
+            match = re.match(pattern, edge.get_source() + " -> " + edge.get_destination())
+            if match:
+                to_id, from_id = match.groups()
+                ret.add_edge(int(from_id), int(to_id))  # 添加边
+            if edge.get_source() in localMap:
+                localMap[edge.get_source()][1].append(edge.get_destination())
+            if edge.get_destination() in localMap:
+                localMap[edge.get_destination()][0].append(edge.get_source())
+            weight = edge.get_label()
+            if weight:
+                weightMap[(edge.get_source(), edge.get_destination())] = weight
+        # print(weightMap)
+        for local_id, (from_ids, to_ids) in localMap.items():
+            # print(local_id, from_ids, to_ids)
+            if len(from_ids) == 1 and len(to_ids) == 1:
+                ret.add_edge(int(to_ids[0]), int(from_ids[0]))
+            elif len(from_ids) == 1 and len(to_ids) > 1:
+                for to_id in to_ids:
+                    # print("to_id", to_id, "from_ids", from_ids[0])
+                    ret.add_edge(int(to_id), int(from_ids[0]))
+            elif len(from_ids) > 1 and len(to_ids) == 1:
+                build_graph_from_dot_wasma_helper(ret, to_ids[0], weightMap, localMap, local_id)
+            elif len(from_ids) > 1 and len(to_ids) > 1:
+                for to_id in to_ids:
+                    build_graph_from_dot_wasma_helper(ret, to_id, weightMap, localMap, local_id)
+    except Exception as e:
+        print(f"Error parsing DOT file: {e}")
+        return Graph(count, dot)
+    return merge_local_get_set(ret)  # 合并 local.get 和 local.set 指令
 
 def build_graph_from_dot_wasma_helper(graph: Graph, node_id: str, weightMap: dict, localMap: dict, local_id: str):
+    # print("build_graph_from_dot_wasma_helper", node_id, local_id)
+    # print("localMap", localMap)
+    # print("weightMap", weightMap)
     # 帮助一个后继节点找到它的前驱节点
     from_ids = localMap[local_id][0]
     if (local_id, node_id) in weightMap:
@@ -324,38 +362,42 @@ def build_graph_from_dot_wasmOpt(dot, count=0):
     从 wasm-opt 的输出中构建数据依赖图
     """
     tmp = Graph()
-    graph = pydot.graph_from_dot_file(dot)[0]  # 解析 DOT 图
-    debugLocPattern = r"\".*?\| Line: (\d+) \|.*?\""  # 匹配 debugLoc
-    debugLocMap = {}  # debugLoc 映射表, key: node_name, value: debugLoc
-    for node in graph.get_nodes():
-        node_name = node.get_name()
-        node_debugLoc = node.get_attributes().get("debugLoc")  # 获取 debugLoc  # 添加节点
-        if node_debugLoc:
-            match = re.match(debugLocPattern, node_debugLoc)
-            if match:
-                # print(match.group())
-                debugLoc = match.group(1)
-                debugLocMap[node_name] = debugLoc
-        label = node.get_label()
-        tmp.add_node(node_name, label[1:len(label)-1])  # 添加节点
-    # print(debugLocMap)    
-    for edge in graph.get_edges():
-        from_id = edge.get_source()
-        to_id = edge.get_destination()
-        tmp.add_edge(from_id, to_id)
+    try:
+        graph = pydot.graph_from_dot_file(dot)[0]  # 解析 DOT 图
+        debugLocPattern = r"\".*?\| Line: (\d+) \|.*?\""  # 匹配 debugLoc
+        debugLocMap = {}  # debugLoc 映射表, key: node_name, value: debugLoc
+        for node in graph.get_nodes():
+            node_name = node.get_name()
+            node_debugLoc = node.get_attributes().get("debugLoc")  # 获取 debugLoc  # 添加节点
+            if node_debugLoc:
+                match = re.match(debugLocPattern, node_debugLoc)
+                if match:
+                    # print(match.group())
+                    debugLoc = match.group(1)
+                    debugLocMap[node_name] = debugLoc
+            label = node.get_label()
+            tmp.add_node(node_name, label[1:len(label)-1])  # 添加节点
+        # print(debugLocMap)    
+        for edge in graph.get_edges():
+            from_id = edge.get_source()
+            to_id = edge.get_destination()
+            tmp.add_edge(from_id, to_id)
 
-    # 修正图
-    ret = Graph(count, dot)
-    visited = set()
-    for node_id, _ in tmp.adj_list.items():
-        if node_id in debugLocMap:
-            ret.add_node(int(debugLocMap[node_id]), tmp.adj_list[node_id][0])
-            s = build_graph_from_dot_wasmOpt_helper(tmp, node_id, debugLocMap, visited)
-            # print(s)
-            for to_id in s:
-                if debugLocMap[node_id] != debugLocMap[to_id]: # 避免自反
-                    ret.add_node(int(debugLocMap[to_id]), tmp.adj_list[to_id][0])
-                    ret.add_edge(int(debugLocMap[node_id]), int(debugLocMap[to_id]))        
+        # 修正图
+        ret = Graph(count, dot)
+        visited = set()
+        for node_id, _ in tmp.adj_list.items():
+            if node_id in debugLocMap:
+                ret.add_node(int(debugLocMap[node_id]), tmp.adj_list[node_id][0])
+                s = build_graph_from_dot_wasmOpt_helper(tmp, node_id, debugLocMap, visited)
+                # print(s)
+                for to_id in s:
+                    if debugLocMap[node_id] != debugLocMap[to_id]: # 避免自反
+                        ret.add_node(int(debugLocMap[to_id]), tmp.adj_list[to_id][0])
+                        ret.add_edge(int(debugLocMap[node_id]), int(debugLocMap[to_id]))      
+    except Exception as e:
+        print(f"Error parsing DOT file: {e}")
+        return Graph(count, dot)  
     return ret
 
 
@@ -404,9 +446,8 @@ def compareAdjacentMatrix(graphs):
     num_graphs = len(graphs)
     similarity_matrix = np.zeros((num_graphs, num_graphs))
 
-    # 打印graphs
     # for g in graphs:
-    #     print(nx.adjacency_matrix(g).toarray())
+    #     print(g.node_count)
 
     # 两两计算 Frobenius 范数
     for (i, g1), (j, g2) in itertools.combinations(enumerate(graphs), 2):

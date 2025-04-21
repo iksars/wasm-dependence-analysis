@@ -95,7 +95,7 @@ X="auto node = addNode(Node::makeVar(type));\n\
       "
 sed -i "136i $X" ./src/dataflow/graph.h
 sed -i "417d" ./src/dataflow/graph.h
-X="if ((func->isParam(curr->index) && node->isVar()) || (node->isConst() && !node->origin) || (node->isVar() && !node->origin)) { node = makeVar(curr->type, curr);} // If this is a param and never changed since build as var, we need to emit local.get in place, this node has the debug location for the local.get \n\
+X="if ((func->isParam(curr->index) && node->isVar()) || ((node->isConst() && !node->origin) || (node->isConst() && func->debugLocations.find(node->origin) == func->debugLocations.end())) || (node->isVar() && !node->origin)) { node = makeVar(curr->type, curr);} // If this is a param and never changed since build as var, we need to emit local.get in place, this node has the debug location for the local.get \n\
 return node;"
 sed -i "417i $X" ./src/dataflow/graph.h
 X="return makeVar(curr->type, curr);"
