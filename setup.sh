@@ -1,5 +1,18 @@
 #!/bin/bash
 
+DIR="./tools"
+
+if [ ! -d "$DIR" ]; then
+    mkdir -p "$DIR"
+fi
+
+DIR="./data"
+
+if [ ! -d "$DIR" ]; then
+    mkdir -p "$DIR"
+fi
+
+
 cd tools
 # Clone the Wassail repo
 git clone https://github.com/acieroid/wassail.git
@@ -55,10 +68,10 @@ X="Node* doVisitConst(Const* curr) { return makeConst(curr); }"
 sed -i "419i $X" ./src/dataflow/graph.h
 
 X="Node* makeConst(wasm::Const* origin) {\n\
-    auto iter = constantNodes.find(origin->value);\n\
-    if (iter != constantNodes.end()) {\n\
-      return iter->second;\n\
-    }\n\
+    // auto iter = constantNodes.find(origin->value);\n\
+    // if (iter != constantNodes.end()) {\n\
+    //   return iter->second;\n\
+    // }\n\
     // Create one for this literal.\n\
     Builder builder(*module);\n\
     auto* c = builder.makeConst(origin->value);\n\
@@ -67,7 +80,7 @@ X="Node* makeConst(wasm::Const* origin) {\n\
       func->debugLocations[c] = debugLoc;\n\
     }\n\
     auto* ret = addNode(Node::makeExpr(c, c));\n\
-    constantNodes[origin->value] = ret;\n\
+    // constantNodes[origin->value] = ret;\n\
     return ret;\n\
 }"
 sed -i "157i $X" ./src/dataflow/graph.h
@@ -81,7 +94,9 @@ X="auto node = addNode(Node::makeVar(type));\n\
       return node;
       "
 sed -i "136i $X" ./src/dataflow/graph.h
-X="node->origin = curr;"
+sed -i "417d" ./src/dataflow/graph.h
+X="if ((func->isParam(curr->index) && node->isVar()) || ((node->isConst() && !node->origin) || (node->isConst() && func->debugLocations.find(node->origin) == func->debugLocations.end())) || (node->isVar() && !node->origin)) { node = makeVar(curr->type, curr);} // If this is a param and never changed since build as var, we need to emit local.get in place, this node has the debug location for the local.get \n\
+return node;"
 sed -i "417i $X" ./src/dataflow/graph.h
 X="return makeVar(curr->type, curr);"
 sed -i "472d" ./src/dataflow/graph.h
@@ -90,6 +105,12 @@ sed -i "585d" ./src/dataflow/graph.h
 sed -i "585i $X" ./src/dataflow/graph.h
 sed -i "625d" ./src/dataflow/graph.h
 sed -i "625i $X" ./src/dataflow/graph.h
+sed -i "648d" ./src/dataflow/graph.h
+X="ifTrue = ensureI1(condition, expr);"
+sed -i "648i $X" ./src/dataflow/graph.h
+sed -i "650d" ./src/dataflow/graph.h
+X="ifFalse = makeZeroComp(condition, true, expr);"
+sed -i "650i $X" ./src/dataflow/graph.h
 
 sed -i "72d" ./src/dataflow/utils.h
 
@@ -148,7 +169,7 @@ X='inline std::ostream& dump2dot(Graph& graph, std::ostream& o) {\n\
         o << "bad";\n\
         break;\n\
     }\n\
-    o << "\\" origin: " << *node->origin;\n\
+    o << "\\" origin=\\"" << *node->origin << "\\"";\n\
     auto it = graph.func->debugLocations.find(node->origin);\n\
     if (it != graph.func->debugLocations.end()) {\n\
       if (it->second) {\n\
@@ -178,7 +199,30 @@ X="#include <fstream>"
 sed -i "36i $X" ./src/passes/DataFlowOpts.cpp
 
 X="std::ofstream f;\n\
-    f.open(\"graph_\" + std::string(func->name.str) + \".dot\");\n\
+    f.open(runner->options.arguments[\"data-flow-ir-dump\"] + \"/graph_\" + std::string(func->name.str) + \".dot\");\n\
     dump2dot(graph, f);\n\
     f.close();"
 sed -i "64i $X" ./src/passes/DataFlowOpts.cpp
+
+X=".add(\"--data-flow-dump\",\n\
+         \"-od\",\n\
+         \"Dump data flow graph to a file\",\n\
+         WasmOptOption,\n\
+         Options::Arguments::One,\n\
+         [](Options* o, const std::string& argument) {\n\
+           o->extra[\"od\"] = argument;\n\
+           Colors::setEnabled(false);\n\
+         })"
+sed -i "108i $X" ./src/tools/wasm-opt.cpp
+X="options.passOptions.arguments[\"data-flow-ir-dump\"] = options.extra[\"od\"];"
+sed -i "272i $X" ./src/tools/wasm-opt.cpp
+
+sed -i "418d" ./src/pass.h
+X="PassRunner* runner = nullptr;"
+sed -i "421i $X" ./src/pass.h
+
+cd ../..
+
+./build.sh
+
+
