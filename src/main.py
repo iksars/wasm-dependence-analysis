@@ -1,5 +1,5 @@
 import sys
-from process import runBenchmark, prepareBenchmark, clear, clearBenchmark, DATA_MICRO_BENCHMARKS_PATH, prepareReal, runReal, clearReal, DATA_REAL_WORLD_PATH
+from process import runBenchmark, prepareBenchmark, clear, clearBenchmark, DATA_MICRO_BENCHMARKS_PATH, prepareReal, runReal, clearReal, DATA_REAL_WORLD_PATH, evalDataJson
 import dump
 
 def help_message(): 
@@ -91,3 +91,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+    # evalDataJson(DATA_REAL_WORLD_PATH / "result.json")
