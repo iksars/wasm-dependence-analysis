@@ -260,11 +260,11 @@ def runBenchmark():
                 graphs = []
                 for tool in toolRegister:
                     graphs.append(toolRegister[tool][2](item / tool / toolRegister[tool][1](i if tool == "binaryen" else metadata["functions"][i]["index"], caseName), metadata["functions"][i]["count"]))
-                # if caseName == "simple_use2":
-                #     for graph2 in graphs:
-                #         print(graph2.to_dot())
+                if caseName == "multi_set_get":
+                    for graph2 in graphs:
+                        print(graph2.to_dot())
                 matrix = graph.compareAdjacentMatrix(graphs)
-                data_item["functions"].append({"index": metadata["functions"][i]["index"], "matrix": matrix.tolist()})
+                data_item["functions"].append({"index": metadata["functions"][i]["index"], "count": metadata["functions"][i]["count"], "matrix": matrix.tolist()})
                 if i == 0:
                     avg = matrix
                 else:
@@ -322,7 +322,7 @@ def runReal():
                 #     for graph2 in graphs:
                 #         print(graph2.to_dot())
                 matrix = graph.compareAdjacentMatrix(graphs)
-                data_item["functions"].append({"index": metadata["functions"][i]["index"], "matrix": matrix.tolist()})
+                data_item["functions"].append({"index": metadata["functions"][i]["index"], "count": metadata["functions"][i]["count"], "matrix": matrix.tolist()})
                 if i == 0:
                     avg = matrix
                 else:
@@ -335,3 +335,17 @@ def runReal():
     # Write the data to a file
     with open(DATA_REAL_WORLD_PATH / "result.json", "w") as f:
         json.dump(data, f)
+
+def evalDataJson(filePath):
+    with open(filePath, "r") as f:
+        data = json.load(f)
+    print("caseName : Fn : Fc")
+    for caseItem in data["cases"]:
+        caseName = caseItem["case"]
+        Fn = len(caseItem["functions"])
+        Fc = 0
+        for f in caseItem["functions"]:
+            matrix = f["matrix"]
+            if matrix == [[0.0,0.0,0.0],[0.0,0.0,0.0],[0.0,0.0,0.0]]:
+                Fc = Fc + 1
+        print("{} : {} : {}".format(caseName, Fn, Fc))

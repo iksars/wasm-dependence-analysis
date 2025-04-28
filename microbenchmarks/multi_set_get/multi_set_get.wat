@@ -15,7 +15,9 @@
     i32.lt_s  
     if  ;; label = @1
       local.get 0 
-      local.set 2 ;; $2 = 1
+      i32.const 2
+      i32.sub
+      local.set 2 
     else
       local.get 1
       local.set 2 ;; $2 = 1 + 5
