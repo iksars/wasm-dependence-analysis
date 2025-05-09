@@ -3,6 +3,7 @@ import pydot
 import itertools
 import numpy as np
 import networkx as nx
+import concurrent.futures
 
 class Graph:
     def __init__(self, count=0, origin=""):
@@ -280,7 +281,7 @@ def build_graph_from_dot_wasma_helper(graph: Graph, node_id: str, weightMap: dic
     # print("localMap", localMap)
     # print("weightMap", weightMap)
     # 帮助一个后继节点找到它的前驱节点
-    from_ids = localMap[local_id][0]
+    from_ids = localMap[local_id][0] 
     if (local_id, node_id) in weightMap:
         weight = weightMap[(local_id, node_id)]
         last_m = ""
@@ -437,22 +438,64 @@ def get_edges_set(graph):
 
 #     return similarity_matrix
 
+# def compareAdjacentMatrix(graphs):
+#     """
+#     比较多个图的Frobenius 范数
+#     :param graphs: 图列表，每个图为networkx表示的邻接矩阵
+#     :return: 相似度矩阵
+#     """
+#     num_graphs = len(graphs)
+#     similarity_matrix = np.zeros((num_graphs, num_graphs))
+
+#     # for g in graphs:
+#     #     print(g.node_count)
+
+#     # 两两计算 Frobenius 范数
+#     for (i, g1), (j, g2) in itertools.combinations(enumerate(graphs), 2):
+#         sim = np.linalg.norm(nx.adjacency_matrix(g1.to_NetworkX()).toarray() - nx.adjacency_matrix(g2.to_NetworkX()).toarray(), 'fro')
+#         similarity_matrix[i, j] = similarity_matrix[j, i] = sim  # 矩阵对称
+
+#     return similarity_matrix
+
+def _frobenius_task(args):
+    i, j, g1, g2 = args
+    m1 = nx.adjacency_matrix(g1.to_NetworkX()).toarray()
+    m2 = nx.adjacency_matrix(g2.to_NetworkX()).toarray()
+    sim = np.linalg.norm(m1 - m2, 'fro')
+    return i, j, sim
+
 def compareAdjacentMatrix(graphs):
     """
-    比较多个图的Frobenius 范数
-    :param graphs: 图列表，每个图为networkx表示的邻接矩阵
-    :return: 相似度矩阵
+    并行计算多个图的 Frobenius 范数差异
+    :param graphs: 图列表，每个图为 networkx 表示的邻接矩阵
+    :return: 相似度矩阵（对称）
     """
     num_graphs = len(graphs)
     similarity_matrix = np.zeros((num_graphs, num_graphs))
 
-    # for g in graphs:
-    #     print(g.node_count)
+    args_list = [
+        (i, j, graphs[i], graphs[j])
+        for (i, g1), (j, g2) in itertools.combinations(enumerate(graphs), 2)
+    ]
 
-    # 两两计算 Frobenius 范数
-    for (i, g1), (j, g2) in itertools.combinations(enumerate(graphs), 2):
-        sim = np.linalg.norm(nx.adjacency_matrix(g1.to_NetworkX()).toarray() - nx.adjacency_matrix(g2.to_NetworkX()).toarray(), 'fro')
-        similarity_matrix[i, j] = similarity_matrix[j, i] = sim  # 矩阵对称
+    with concurrent.futures.ProcessPoolExecutor() as executor:
+        results = executor.map(_frobenius_task, args_list)
+
+    for i, j, sim in results:
+        similarity_matrix[i, j] = similarity_matrix[j, i] = sim
 
     return similarity_matrix
 
+def f(tmp: Graph, debugLocMap: map):
+    ret = Graph()
+    visited = set()
+    for node_id, _ in tmp.adj_list.items():
+        if node_id in debugLocMap:
+            ret.add_node(int(debugLocMap[node_id]), tmp.adj_list[node_id][0])
+            s = build_graph_from_dot_wasmOpt_helper(tmp, node_id, debugLocMap, visited)
+            for to_id in s:
+                if debugLocMap[node_id] != debugLocMap[to_id]: # 避免自反
+                    ret.add_node(int(debugLocMap[to_id]), tmp.adj_list[to_id][0])
+                    ret.add_edge(int(debugLocMap[node_id]), int(debugLocMap[to_id])) 
+    return ret
+    

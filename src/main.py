@@ -1,4 +1,5 @@
 import sys
+import time
 from process import runBenchmark, prepareBenchmark, clear, clearBenchmark, DATA_MICRO_BENCHMARKS_PATH, prepareReal, runReal, clearReal, DATA_REAL_WORLD_PATH, evalDataJson
 import dump
 
@@ -90,5 +91,8 @@ def main():
         sys.exit()
 
 if __name__ == "__main__":
+    start = time.time()
     main()
+    end = time.time()
+    print(f"main() 执行耗时：{end - start:.4f} 秒")
     # evalDataJson(DATA_REAL_WORLD_PATH / "result.json")

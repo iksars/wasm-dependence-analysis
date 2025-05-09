@@ -3,6 +3,8 @@ import subprocess
 import time
 import json
 import graph
+import concurrent.futures
+
 
 MICRO_BENCHMARKS_PATH = Path("microbenchmarks")
 TOOL_WASSAIL = "tools/wassail/_build/default/main.exe"
@@ -260,9 +262,9 @@ def runBenchmark():
                 graphs = []
                 for tool in toolRegister:
                     graphs.append(toolRegister[tool][2](item / tool / toolRegister[tool][1](i if tool == "binaryen" else metadata["functions"][i]["index"], caseName), metadata["functions"][i]["count"]))
-                if caseName == "multi_set_get":
-                    for graph2 in graphs:
-                        print(graph2.to_dot())
+                # if caseName == "stack_and_local":
+                #     for graph2 in graphs:
+                #         print(graph2.to_dot())
                 matrix = graph.compareAdjacentMatrix(graphs)
                 data_item["functions"].append({"index": metadata["functions"][i]["index"], "count": metadata["functions"][i]["count"], "matrix": matrix.tolist()})
                 if i == 0:
@@ -297,13 +299,57 @@ def prepareReal():
                 return False
     return True
     
+# def runReal():
+#     # for item in REAL_WORLD_PATH.iterdir():
+#     #     if item.is_dir():
+#     #         runAllTool(item, False)
+#     data = {"tools": [], "cases": []}
+#     data["tools"] = list(toolRegister.keys())
+#     # transform the data
+#     for item in DATA_REAL_WORLD_PATH.iterdir():
+#         if item.is_dir():
+#             caseName = item.name
+#             metadata = readMetadata(REAL_WORLD_PATH / caseName / "metadata.json")
+#             data_item = {
+#                 "case": caseName,
+#                 "functions": [],
+#                 "average": []
+#             }
+#             avg = {}
+#             for i in range(len(metadata["functions"])):
+#                 graphs = []
+#                 for tool in toolRegister:
+#                     graphs.append(toolRegister[tool][2](item / tool / toolRegister[tool][1](i if tool == "binaryen" else metadata["functions"][i]["index"], name_map[caseName]), metadata["functions"][i]["count"]))
+#                 # if caseName == "simple_use2":
+#                 #     for graph2 in graphs:
+#                 #         print(graph2.to_dot())
+#                 matrix = graph.compareAdjacentMatrix(graphs)
+#                 data_item["functions"].append({"index": metadata["functions"][i]["index"], "count": metadata["functions"][i]["count"], "matrix": matrix.tolist()})
+#                 if i == 0:
+#                     avg = matrix
+#                 else:
+#                     avg += matrix
+#             data_item["average"] = (avg / len(metadata["functions"])).tolist()
+#             data["cases"].append(data_item)
+#         else :
+#             # unexcepted file
+#             item.unlink()
+#     # Write the data to a file
+#     with open(DATA_REAL_WORLD_PATH / "result.json", "w") as f:
+#         json.dump(data, f)
+
+def run_tool_for_process(args):
+    idx, tool_name, tool_info, i, func_index, count, path = args
+    tool_func = tool_info[2]
+    return idx, tool_func(path, count)
+
 def runReal():
     # for item in REAL_WORLD_PATH.iterdir():
     #     if item.is_dir():
     #         runAllTool(item, False)
     data = {"tools": [], "cases": []}
     data["tools"] = list(toolRegister.keys())
-    # transform the data
+
     for item in DATA_REAL_WORLD_PATH.iterdir():
         if item.is_dir():
             caseName = item.name
@@ -314,27 +360,47 @@ def runReal():
                 "average": []
             }
             avg = {}
+
             for i in range(len(metadata["functions"])):
-                graphs = []
-                for tool in toolRegister:
-                    graphs.append(toolRegister[tool][2](item / tool / toolRegister[tool][1](i if tool == "binaryen" else metadata["functions"][i]["index"], name_map[caseName]), metadata["functions"][i]["count"]))
-                # if caseName == "simple_use2":
-                #     for graph2 in graphs:
-                #         print(graph2.to_dot())
+                graphs = [None] * len(toolRegister)
+                futures = []
+                
+                with concurrent.futures.ProcessPoolExecutor() as executor:
+                    args_list = []
+                    for idx, tool in enumerate(toolRegister):
+                        tool_info = toolRegister[tool]
+                        func_index = i if tool == "binaryen" else metadata["functions"][i]["index"]
+                        path = item / tool / tool_info[1](func_index, name_map[caseName])
+                        args_list.append((idx, tool, tool_info, i, func_index, metadata["functions"][i]["count"], path))
+
+                    futures = [executor.submit(run_tool_for_process, args) for args in args_list]
+
+                    for future in concurrent.futures.as_completed(futures):
+                        idx, result = future.result()
+                        graphs[idx] = result
+
                 matrix = graph.compareAdjacentMatrix(graphs)
-                data_item["functions"].append({"index": metadata["functions"][i]["index"], "count": metadata["functions"][i]["count"], "matrix": matrix.tolist()})
+                data_item["functions"].append({
+                    "index": metadata["functions"][i]["index"],
+                    "count": metadata["functions"][i]["count"],
+                    "matrix": matrix.tolist()
+                })
                 if i == 0:
                     avg = matrix
                 else:
                     avg += matrix
+
             data_item["average"] = (avg / len(metadata["functions"])).tolist()
             data["cases"].append(data_item)
-        else :
-            # unexcepted file
+
+        else:
+            # 非预期文件，删除
             item.unlink()
-    # Write the data to a file
+
+    # 写入结果
     with open(DATA_REAL_WORLD_PATH / "result.json", "w") as f:
         json.dump(data, f)
+
 
 def evalDataJson(filePath):
     with open(filePath, "r") as f:
